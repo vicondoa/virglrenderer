@@ -65,7 +65,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME}"
-          gh release create "$VERSION" release/* \
+          gh release create "$VERSION" release/*.tar.gz release/SHA256SUMS \
             --title "$VERSION" \
             --notes "Automated release. virglrenderer with nixling VA-API compatibility patch."
 
