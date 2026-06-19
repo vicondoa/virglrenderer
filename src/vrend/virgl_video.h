@@ -125,6 +125,8 @@ struct virgl_video_callbacks {
                              const unsigned *coded_sizes);
 };
 
+int virgl_video_early_init(int drm_fd);
+
 int virgl_video_init(int drm_fd,
                      struct virgl_video_callbacks *cbs,
                      unsigned int flags);

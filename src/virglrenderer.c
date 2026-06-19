@@ -54,6 +54,7 @@
 #include "virtgpu_drm.h"
 
 #include "virgl_context.h"
+#include "vrend/virgl_video.h"
 #include "virgl_fence.h"
 #include "virgl_resource.h"
 #include "virgl_util.h"
@@ -854,6 +855,15 @@ int virgl_renderer_init(void *cookie, int flags, struct virgl_renderer_callbacks
          if (cbs->version >= 2 && cbs->get_drm_fd)
             drm_fd = cbs->get_drm_fd(cookie);
       }
+
+#ifdef ENABLE_VIDEO
+      if (flags & VIRGL_RENDERER_USE_VIDEO) {
+         if (virgl_video_early_init(drm_fd) == 0)
+            virgl_info("early video init succeeded\n");
+         else
+            virgl_warn("early video init failed\n");
+      }
+#endif
 
       ret = vrend_winsys_init(flags, drm_fd);
       if (ret) {

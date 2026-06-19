@@ -63,6 +63,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <epoxy/gl.h>
 #include <epoxy/egl.h>
 #include <va/va.h>
@@ -541,6 +542,23 @@ static VASurfaceID get_enc_ref_pic(struct virgl_video_codec *codec,
     return codec->ref_pic_list[idx]->va_sfc;
 }
 
+
+int virgl_video_early_init(int drm_fd)
+{
+    int video_fd, major_ver, minor_ver;
+    if (va_dpy) return 0;
+    video_fd = open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC);
+    if (video_fd < 0 && drm_fd >= 0) video_fd = dup(drm_fd);
+    if (video_fd < 0) return -1;
+    va_dpy = vaGetDisplayDRM(video_fd);
+    if (!va_dpy) { close(video_fd); return -1; }
+    if (vaInitialize(va_dpy, &major_ver, &minor_ver) != VA_STATUS_SUCCESS) {
+        va_dpy = NULL; close(video_fd); return -1;
+    }
+    virgl_info("early VA-API init: version %d.%d\n", major_ver, minor_ver);
+    return 0;
+}
+
 int virgl_video_init(int drm_fd,
                      struct virgl_video_callbacks *cbs, unsigned int flags)
 {
@@ -550,22 +568,12 @@ int virgl_video_init(int drm_fd,
 
     (void)flags;
 
-    if (drm_fd < 0) {
-        virgl_error("invalid drm fd: %d\n", drm_fd);
-        return -1;
-    }
-
-    va_dpy = vaGetDisplayDRM(drm_fd);
     if (!va_dpy) {
-        virgl_error("get va display failed\n");
-        return -1;
-    }
-
-    va_stat = vaInitialize(va_dpy, &major_ver, &minor_ver);
-    if (VA_STATUS_SUCCESS != va_stat) {
-        virgl_error("init va library failed\n");
-        virgl_video_destroy();
-        return -1;
+        if (drm_fd < 0) { virgl_error("invalid drm fd: %d\n", drm_fd); return -1; }
+        va_dpy = vaGetDisplayDRM(drm_fd);
+        if (!va_dpy) { virgl_error("get va display failed\n"); return -1; }
+        va_stat = vaInitialize(va_dpy, &major_ver, &minor_ver);
+        if (VA_STATUS_SUCCESS != va_stat) { virgl_error("init va library failed\n"); virgl_video_destroy(); return -1; }
     }
 
     virgl_info("VA-API version: %d.%d\n", major_ver, minor_ver);
@@ -573,11 +581,8 @@ int virgl_video_init(int drm_fd,
     driver = vaQueryVendorString(va_dpy);
     virgl_info("Driver version: %s\n", driver ? driver : "<unknown>");
 
-    if (!driver || !strstr(driver, "Mesa Gallium")) {
-        virgl_error("only supports mesa va drivers now\n");
-        virgl_video_destroy();
-        return -1;
-    }
+    if (!driver) { virgl_error("no VA-API vendor string\n"); virgl_video_destroy(); return -1; }
+    if (!strstr(driver, "Mesa Gallium")) { virgl_info("non-Mesa VA-API driver (%s)\n", driver); }
 
     callbacks = cbs;
 
